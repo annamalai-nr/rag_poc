@@ -32,16 +32,7 @@ class AllInOnePCE:
         max_tokens: int = config.LLM_MAX_TOKENS,
         top_p: float = config.LLM_TOP_P
     ):
-        """Initialize the All In One PCE.
-        
-        Args:
-            openai_api_key (str): OpenAI API key
-            output_dir (str): Directory for temporary PNG files
-            model (str): OpenAI model to use
-            temperature (float): Model temperature (0-1)
-            max_tokens (int): Maximum tokens in response
-            top_p (float): Top p sampling parameter
-        """
+        """Initialize the All In One PCE."""
         self.tmp_pdf_png_path = Path(tmp_pdf_png_path)
         self.tmp_pdf_png_path.mkdir(parents=True, exist_ok=True)
         self.client = OpenAI(api_key=openai_api_key)
@@ -52,10 +43,6 @@ class AllInOnePCE:
         
         # Load prompts
         self.system_prompt, self.user_prompt = self._load_prompts()
-        
-        # Setup logging
-        logging.basicConfig(level=logging.INFO)
-        self.logger = logging.getLogger(__name__)
 
     def _load_prompts(self) -> tuple[str, str]:
         """Load system and user prompts for the LLM."""
@@ -67,7 +54,7 @@ class AllInOnePCE:
             user_prompt = content.split("User Prompt:")[1].strip()
             return system_prompt, user_prompt
         except Exception as e:
-            self.logger.error(f"Error loading prompts: {e}")
+            print(f"Error loading prompts: {e}")
             raise
 
     def _convert_pdf_to_png(
@@ -77,17 +64,7 @@ class AllInOnePCE:
         first_page: Optional[int] = None,
         last_page: Optional[int] = None
     ) -> List[Path]:
-        """Convert PDF pages to PNG images.
-        
-        Args:
-            pdf_path (str): Path to PDF file
-            dpi (int): DPI for output images
-            first_page (int, optional): First page to process
-            last_page (int, optional): Last page to process
-            
-        Returns:
-            List[Path]: Paths to generated PNG files
-        """
+        """Convert PDF pages to PNG images."""
         pdf_path = Path(pdf_path)
         if not pdf_path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
@@ -111,19 +88,12 @@ class AllInOnePCE:
             save_path = tmp_pdf_png_subdir / f"page_{i:03d}.png"
             image.save(save_path, "PNG")
             png_paths.append(save_path)
-            self.logger.info(f"Saved page {i} to {save_path}")
+            print(f"Saved page {i} to {save_path}")
         
         return png_paths
 
     def _encode_images(self, png_paths: List[Path]) -> List[str]:
-        """Encode PNG images to base64 strings.
-        
-        Args:
-            png_paths (List[Path]): Paths to PNG files
-            
-        Returns:
-            List[str]: Base64 encoded image strings
-        """
+        """Encode PNG images to base64 strings."""
         base64_images = []
         for path in tqdm(png_paths, desc="Encoding images"):
             with open(path, "rb") as image_file:
@@ -132,14 +102,7 @@ class AllInOnePCE:
         return base64_images
 
     def _process_with_llm(self, base64_images: List[str]) -> List[Dict[str, Any]]:
-        """Process images with OpenAI LLM.
-        
-        Args:
-            base64_images (List[str]): Base64 encoded image strings
-            
-        Returns:
-            List[Dict[str, Any]]: LLM responses for each image
-        """
+        """Process images with OpenAI LLM."""
         responses = []
         for idx, base64_image in enumerate(tqdm(base64_images, desc="Processing with LLM")):
             try:
@@ -163,28 +126,18 @@ class AllInOnePCE:
                     top_p=self.top_p,
                     response_format={"type": "text"},
                 )
-                self.logger.info(f"Obtained response for page {idx + 1} from LLM: {self.model}")
+                print(f"Obtained response for page {idx + 1} from LLM: {self.model}")
                 responses.append(response.choices[0].message.content)
             except Exception as e:
-                self.logger.error(f"Error processing page {idx + 1}: {e}")
+                print(f"Error processing page {idx + 1}: {e}")
                 responses.append(None)
                 
         return responses
 
     def _parse_xml_chunks(self, xml_string: str) -> Dict[str, Any]:
-        """Parse XML response into structured data.
-        
-        Args:
-            xml_string (str): XML string from LLM
-            
-        Returns:
-            Dict[str, Any]: Parsed chunk data
-        """
+        """Parse XML response into structured data."""
         try:
-            # Remove code block markers if present
             xml_string = xml_string.replace("```xml", "").replace("```", "")
-            
-            # Parse XML
             root = ET.fromstring(xml_string)
             chunks = {}
             
@@ -202,7 +155,7 @@ class AllInOnePCE:
                 
             return chunks
         except Exception as e:
-            self.logger.error(f"Error parsing XML: {e}")
+            print(f"Error parsing XML: {e}")
             return {"error": str(e), "raw_content": xml_string}
 
     def process_pdf(
@@ -211,29 +164,18 @@ class AllInOnePCE:
         save_output: bool = True,
         cleanup_images: bool = True
     ) -> tuple[List[Dict[str, Any]], ProcessingMetrics]:
-        """Process a PDF file and extract semantic chunks.
-        
-        Args:
-            pdf_path (str): Path to PDF file
-            save_output (bool): Whether to save results to JSON
-            cleanup_images (bool): Whether to delete temporary PNG files
-            
-        Returns:
-            tuple[List[Dict[str, Any]], ProcessingMetrics]: Semantic chunks and processing metrics
-        """
+        """Process a PDF file and extract semantic chunks."""
         start_time = time.time()
         
-        # Convert PDF to PNGs
+        # Process PDF
         png_start = time.time()
         png_paths = self._convert_pdf_to_png(pdf_path)
         png_time = time.time() - png_start
         
-        # Encode images
         encoding_start = time.time()
         base64_images = self._encode_images(png_paths)
         encoding_time = time.time() - encoding_start
         
-        # Process with LLM
         llm_start = time.time()
         llm_responses = self._process_with_llm(base64_images)
         llm_time = time.time() - llm_start
@@ -250,32 +192,29 @@ class AllInOnePCE:
                     chunks.extend(list(parsed_chunks.values()))
                     successful_pages += 1
                 except Exception as e:
-                    self.logger.error(f"Failed to parse page {idx + 1}: {e}")
-                    chunks.append({"error while converting to json": str(e), "raw_content": response})
+                    print(f"Failed to parse page {idx + 1}: {e}")
+                    chunks.append({"error": str(e), "raw_content": response})
                     failed_pages += 1
             else:
                 failed_pages += 1
                 
-        end_time = time.time()
-        total_time = end_time - start_time
-        self.logger.info(f"Total processing time: {total_time:.2f} seconds")
+        print(f"Total processing time: {time.time() - start_time:.2f} seconds")
                 
-        # Save results if requested
+        # Save results
         if save_output:
             output_path = Path(pdf_path).with_suffix('.json')
             with open(output_path, 'w') as f:
                 json.dump(chunks, f, indent=2)
                 
-        # Cleanup temporary files if requested
-            if cleanup_images:
-                try:
-                    # Use shutil.rmtree to remove directory and all its contents
-                    shutil.rmtree(self.tmp_pdf_png_path)
-                    self.logger.info(f"Cleaned up temporary directory: {self.tmp_pdf_png_path}")
-                except Exception as e:
-                    self.logger.warning(f"Error cleaning up temporary directory: {e}")
+        # Cleanup
+        if cleanup_images:
+            try:
+                shutil.rmtree(self.tmp_pdf_png_path)
+                print(f"Cleaned up temporary directory: {self.tmp_pdf_png_path}")
+            except Exception as e:
+                print(f"Error cleaning up temporary directory: {e}")
             
-        # Compile metrics
+        # Return results
         metrics = ProcessingMetrics(
             pdf_to_png_time=png_time,
             encoding_time=encoding_time,
@@ -287,26 +226,5 @@ class AllInOnePCE:
         
         return chunks, metrics
 
-# Example usage
 if __name__ == "__main__":
-    # from dotenv import load_dotenv
-    # load_dotenv()
-    # chunker = AllInOnePCE(
-    #     openai_api_key=os.getenv("OPENAI_API_KEY"),
-    #     tmp_pdf_png_path=config.PDF_PNG_PATH
-    # )
-    
-    # chunks, metrics = chunker.process_pdf(
-    #     pdf_path="../data/aiayn_sample_pages.pdf",
-    #     save_output=True,
-    #     cleanup_images=True
-    # )
-    
-    # print(f"\nProcessing metrics:")
-    # print(f"Total pages: {metrics.total_pages}")
-    # print(f"Successful pages: {metrics.successful_pages}")
-    # print(f"Failed pages: {metrics.failed_pages}")
-    # print(f"PDF to PNG time: {metrics.pdf_to_png_time:.2f}s")
-    # print(f"Encoding time: {metrics.encoding_time:.2f}s")
-    # print(f"LLM processing time: {metrics.llm_processing_time:.2f}s")
     pass

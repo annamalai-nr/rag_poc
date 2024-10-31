@@ -42,20 +42,8 @@ class AllInOnePCE:
         self.top_p = top_p
         
         # Load prompts
-        self.system_prompt, self.user_prompt = self._load_prompts()
+        self.system_prompt, self.user_prompt = config.SYSTEM_PROMPT, config.USER_PROMPT
 
-    def _load_prompts(self) -> tuple[str, str]:
-        """Load system and user prompts for the LLM."""
-        prompt_path = config.PROMPT_FILE_PATH
-        try:
-            with open(prompt_path, "r") as file:
-                content = file.read()
-            system_prompt = content.split("System Prompt:")[1].split("User Prompt:")[0].strip()
-            user_prompt = content.split("User Prompt:")[1].strip()
-            return system_prompt, user_prompt
-        except Exception as e:
-            print(f"Error loading prompts: {e}")
-            raise
 
     def _convert_pdf_to_png(
         self, 
